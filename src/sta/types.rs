@@ -1,9 +1,9 @@
-use super::{error, warn, Result};
+use super::{error, warn, Result, SocketHandle};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
-use tokio::net::UnixDatagram;
+use std::sync::Arc;
 
 #[derive(Serialize, Debug, Clone)]
 /// The result from scanning for networks.
@@ -66,7 +66,7 @@ impl ScanResult {
     ///assert_eq!(results[1].signal, -33);
     ///assert_eq!(results[1].name, r#"¯\_(ツ)_/¯"#);
     ///```
-    pub fn vec_from_str(response: &str) -> Result<Vec<ScanResult>> {
+    pub fn vec_from_str(response: &str) -> Arc<Vec<ScanResult>> {
         let mut results = Vec::new();
         for line in response.lines().skip(1) {
             if let Some(scan_result) = ScanResult::from_line(line) {
@@ -75,7 +75,8 @@ impl ScanResult {
                 warn!("Invalid result from scan: {line}");
             }
         }
-        Ok(results)
+        results.sort_by(|a, b| a.signal.cmp(&b.signal));
+        Arc::new(results)
     }
 }
 
@@ -88,11 +89,10 @@ pub struct NetworkResult {
 }
 
 impl NetworkResult {
-    pub async fn vec_from_str(
-        response: &str,
-        socket: &mut UnixDatagram,
+    pub async fn request_results<const N: usize>(
+        socket_handle: &mut SocketHandle<N>,
     ) -> Result<Vec<NetworkResult>> {
-        let mut buffer = [0; 256];
+        let response = socket_handle.request("LIST_NETWORKS").await?.to_owned();
         let mut results = Vec::new();
         let split = response.split('\n').skip(1);
         for line in split {

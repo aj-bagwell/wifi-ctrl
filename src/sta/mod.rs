@@ -94,7 +94,7 @@ impl WifiStation {
                             &mut scan_requests,
                             &mut select_request,
                         )
-                        .await?
+                        .await
                     }
                     None => return Err(error::Error::WifiStationEventChannelClosed),
                 },
@@ -107,7 +107,7 @@ impl WifiStation {
                             &mut scan_requests,
                             &mut select_request,
                         )
-                        .await?;
+                        .await;
                     }
                     None => return Err(error::Error::WifiStationRequestChannelClosed),
                 },
@@ -121,18 +121,16 @@ impl WifiStation {
         event: Event,
         scan_requests: &mut Vec<oneshot::Sender<Result<Arc<Vec<ScanResult>>>>>,
         select_request: &mut Option<SelectRequest>,
-    ) -> Result {
+    ) {
         match event {
             Event::ScanComplete => {
-                let _n = socket_handle.socket.send(b"SCAN_RESULTS").await?;
-                let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
-                let data_str = std::str::from_utf8(&socket_handle.buffer[..n])?;
-                let mut scan_results = ScanResult::vec_from_str(data_str)?;
-                scan_results.sort_by(|a, b| a.signal.cmp(&b.signal));
+                let scan_results = socket_handle
+                    .request("SCAN_RESULTS")
+                    .await
+                    .map(ScanResult::vec_from_str);
 
-                let results = Arc::new(scan_results);
                 while let Some(scan_request) = scan_requests.pop() {
-                    if scan_request.send(Ok(results.clone())).is_err() {
+                    if scan_request.send(scan_results.clone()).is_err() {
                         error!("Scan request response channel closed before response sent");
                     }
                 }
@@ -162,7 +160,7 @@ impl WifiStation {
                 self.broadcast(Broadcast::Unknown(msg));
             }
         }
-        Ok(())
+    }
 
     async fn add_network<const N: usize>(socket_handle: &mut SocketHandle<N>) -> Result<usize> {
         let data_str = socket_handle.request("ADD_NETWORK").await?;
@@ -182,15 +180,16 @@ impl WifiStation {
         request: Request,
         scan_requests: &mut Vec<oneshot::Sender<Result<Arc<Vec<ScanResult>>>>>,
         select_request: &mut Option<SelectRequest>,
-    ) -> Result {
+    ) {
         debug!("Handling request: {request:?}");
         match request {
             Request::Custom(custom, response_channel) => {
-                let _n = socket_handle.socket.send(custom.as_bytes()).await?;
-                let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
-                let data_str = std::str::from_utf8(&socket_handle.buffer[..n])?.trim_end();
-                debug!("Custom request response: {data_str}");
-                if response_channel.send(Ok(data_str.into())).is_err() {
+                let data_str = socket_handle.request(&custom).await;
+                debug!("Custom request response: {data_str:?}");
+                if response_channel
+                    .send(data_str.map(ToOwned::to_owned))
+                    .is_err()
+                {
                     error!("Custom request response channel closed before response sent");
                 }
             }
@@ -206,12 +205,8 @@ impl WifiStation {
                 }
             }
             Request::Networks(response_channel) => {
-                let _n = socket_handle.socket.send(b"LIST_NETWORKS").await?;
-                let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
-                let data_str = std::str::from_utf8(&socket_handle.buffer[..n])?.trim_end();
-                let network_list =
-                    NetworkResult::vec_from_str(data_str, &mut socket_handle.socket).await?;
-                if response_channel.send(Ok(network_list)).is_err() {
+                let network_list = NetworkResult::request_results(socket_handle).await;
+                if response_channel.send(network_list).is_err() {
                     error!("Scan request response channel closed before response sent");
                 }
             }
@@ -225,8 +220,6 @@ impl WifiStation {
                 let network_id = Self::add_network(socket_handle).await;
                 if response_channel.send(network_id).is_err() {
                     error!("Scan request response channel closed before response sent");
-                } else {
-                    debug!("wpa_ctrl created network {network_id}");
                 }
             }
             Request::SetNetwork(id, param, response) => {
@@ -273,21 +266,28 @@ impl WifiStation {
                         let bytes = cmd.into_bytes();
                         if let Err(e) = socket_handle.command(&bytes).await {
                             warn!("Error while selecting network {id}: {e}");
-                            let _ = response_sender.send(Ok(SelectResult::InvalidNetworkId));
+                            let _ = response_sender.send(Err(e));
                             None
                         } else {
                             debug!("wpa_ctrl selected network {id}");
-                            let status = Self::get_status(socket_handle).await?;
-                            if let Some(current_id) = status.get("id") {
-                                if current_id == &id.to_string() {
-                                    let _ =
-                                        response_sender.send(Ok(SelectResult::AlreadyConnected));
-                                    None
-                                } else {
-                                    Some(response_sender)
+                            match Self::get_status(socket_handle).await {
+                                Ok(status) => {
+                                    if let Some(current_id) = status.get("id") {
+                                        if current_id == &id.to_string() {
+                                            let _ = response_sender
+                                                .send(Ok(SelectResult::AlreadyConnected));
+                                            None
+                                        } else {
+                                            Some(response_sender)
+                                        }
+                                    } else {
+                                        Some(response_sender)
+                                    }
                                 }
-                            } else {
-                                Some(response_sender)
+                                Err(e) => {
+                                    let _ = response_sender.send(Err(e));
+                                    None
+                                }
                             }
                         }
                     }
@@ -308,7 +308,6 @@ impl WifiStation {
             }
             Request::Shutdown => (), //shutdown is handled at the scope above
         }
-        Ok(())
     }
 }
 

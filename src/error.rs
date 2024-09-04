@@ -1,4 +1,6 @@
 use super::*;
+use broadcast::error::SendError;
+use config::ConfigError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -41,4 +43,60 @@ pub enum Error {
     TimeoutOpeningSocket(String),
     #[error("permission denied opening socket {0}")]
     PermissionDeniedOpeningSocket(String),
+}
+
+impl Clone for Error {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Io(err) => Self::Io(clone_io(err)),
+            Self::StartupAborted => Self::StartupAborted,
+            Self::ParsingWifiStatus { e, s } => Self::ParsingWifiStatus {
+                e: clone_config_err(e),
+                s: s.clone(),
+            },
+            Self::ParsingWifiConfig { e, s } => Self::ParsingWifiConfig {
+                e: clone_config_err(e),
+                s: s.clone(),
+            },
+            Self::UnexpectedWifiApRepsonse(s) => Self::UnexpectedWifiApRepsonse(s.clone()),
+            Self::Timeout => Self::Timeout,
+            Self::DidNotWriteAllBytes(got, expected) => Self::DidNotWriteAllBytes(*got, *expected),
+            Self::ParseInt(err) => Self::ParseInt(err.clone()),
+            Self::Utf8Parse(err) => Self::Utf8Parse(*err),
+            Self::Recv(err) => Self::Recv(err.clone()),
+            Self::UnsolicitedIoError(err) => Self::UnsolicitedIoError(clone_io(err)),
+            Self::WifiStationRequestChannelClosed => Self::WifiStationRequestChannelClosed,
+            Self::WifiStationEventChannelClosed => Self::WifiStationEventChannelClosed,
+            Self::WifiApRequestChannelClosed => Self::WifiApRequestChannelClosed,
+            Self::WifiApEventChannelClosed => Self::WifiApEventChannelClosed,
+            Self::WifiApBroadcast(SendError(sent)) => {
+                Self::WifiApBroadcast(SendError(sent.clone()))
+            }
+            Self::WifiStaBroadcast(SendError(sent)) => {
+                Self::WifiStaBroadcast(SendError(sent.clone()))
+            }
+            Self::TimeoutOpeningSocket(arg0) => Self::TimeoutOpeningSocket(arg0.clone()),
+            Self::PermissionDeniedOpeningSocket(arg0) => {
+                Self::PermissionDeniedOpeningSocket(arg0.clone())
+            }
+        }
+    }
+}
+
+fn clone_io(err: &std::io::Error) -> std::io::Error {
+    if let Some(raw) = err.raw_os_error() {
+        std::io::Error::from_raw_os_error(raw)
+    } else {
+        std::io::Error::new(err.kind(), err.to_string())
+    }
+}
+
+fn clone_config_err(err: &config::ConfigError) -> config::ConfigError {
+    match err {
+        ConfigError::Frozen => ConfigError::Frozen,
+        ConfigError::NotFound(path) => ConfigError::NotFound(path.clone()),
+        ConfigError::PathParse(err) => ConfigError::PathParse(err.clone()),
+        ConfigError::Message(message) => ConfigError::Message(message.clone()),
+        e => ConfigError::Message(e.to_string()),
+    }
 }
