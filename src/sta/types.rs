@@ -98,11 +98,10 @@ impl NetworkResult {
         for line in split {
             let mut line_split = line.split_whitespace();
             if let Some(network_id) = line_split.next() {
-                let cmd = format!("GET_NETWORK {network_id} ssid");
-                let bytes = cmd.into_bytes();
-                socket.send(&bytes).await?;
-                let n = socket.recv(&mut buffer).await?;
-                let ssid = std::str::from_utf8(&buffer[..n])?.trim_matches('\"');
+                let ssid = socket_handle
+                    .request(&format!("GET_NETWORK {network_id} ssid"))
+                    .await?
+                    .trim_matches('\"');
                 if let Ok(network_id) = usize::from_str(network_id) {
                     if let Some(flags) = line_split.last() {
                         results.push(NetworkResult {
