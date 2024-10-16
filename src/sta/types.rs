@@ -1,4 +1,5 @@
-use super::{error, warn, Result, SocketHandle};
+use super::{config, config::unprintf, error, warn, Result, SocketHandle};
+
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -22,27 +23,7 @@ impl ScanResult {
         let (signal, rest) = rest.split_once('\t')?;
         let signal = isize::from_str(signal).ok()?;
         let (flags, escaped_name) = rest.split_once('\t')?;
-        let mut bytes = escaped_name.as_bytes().iter().copied();
-        let mut name = vec![];
-        // undo "printf_encode"
-        loop {
-            name.push(match bytes.next() {
-                Some(b'\\') => match bytes.next()? {
-                    b'n' => b'\n',
-                    b'r' => b'\r',
-                    b't' => b'\t',
-                    b'e' => b'\x1b',
-                    b'x' => {
-                        let hex = [bytes.next()?, bytes.next()?];
-                        u8::from_str_radix(std::str::from_utf8(&hex).ok()?, 16).ok()?
-                    }
-                    c => c,
-                },
-                Some(c) => c,
-                None => break,
-            })
-        }
-        let name = String::from_utf8(name).ok()?;
+        let name = unprintf(escaped_name).ok()?;
         Some(ScanResult {
             mac: mac.to_string(),
             frequency: frequency.to_string(),
@@ -60,7 +41,7 @@ impl ScanResult {
     ///let results = ScanResult::vec_from_str(r#"bssid / frequency / signal level / flags / ssid
     ///00:5f:67:90:da:64	2417	-35	[WPA-PSK-CCMP][WPA2-PSK-CCMP][ESS]	TP-Link DA64
     ///e0:91:f5:7d:11:c0	2462	-33	[WPA2-PSK-CCMP][WPS][ESS]	¯\\_(\xe3\x83\x84)_/¯
-    ///"#).unwrap();
+    ///"#);
     ///assert_eq!(results[0].mac, "00:5f:67:90:da:64");
     ///assert_eq!(results[0].name, "TP-Link DA64");
     ///assert_eq!(results[1].signal, -33);
@@ -102,11 +83,15 @@ impl NetworkResult {
                     .request(&format!("GET_NETWORK {network_id} ssid"))
                     .await?
                     .trim_matches('\"');
+                let ssid = unprintf(ssid).map_err(|e| error::Error::ParsingWifiStatus {
+                    e,
+                    s: ssid.to_string(),
+                })?;
                 if let Ok(network_id) = usize::from_str(network_id) {
                     if let Some(flags) = line_split.last() {
                         results.push(NetworkResult {
                             flags: flags.into(),
-                            ssid: ssid.into(),
+                            ssid,
                             network_id,
                         })
                     }
@@ -123,15 +108,11 @@ impl NetworkResult {
 pub type Status = HashMap<String, String>;
 
 pub(crate) fn parse_status(response: &str) -> Result<Status> {
-    use config::{Config, File, FileFormat};
-    let config = Config::builder()
-        .add_source(File::from_str(response, FileFormat::Ini))
-        .build()
-        .map_err(|e| error::Error::ParsingWifiStatus {
-            e,
-            s: response.into(),
-        })?;
-    Ok(config.try_deserialize::<HashMap<String, String>>().unwrap())
+    let map = config::to_map(response).map_err(|e| error::Error::ParsingWifiStatus {
+        e,
+        s: response.into(),
+    })?;
+    Ok(map.into_iter().map(|(k, v)| (k.to_owned(), v)).collect())
 }
 
 #[derive(Debug)]

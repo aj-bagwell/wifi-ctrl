@@ -38,16 +38,10 @@ pub struct Status {
 
 impl Status {
     pub fn from_response(response: &str) -> Result<Status> {
-        use config::{Config, File, FileFormat};
-        let config = Config::builder()
-            .add_source(File::from_str(response, FileFormat::Ini))
-            .build()
-            .map_err(|e| error::Error::ParsingWifiStatus {
-                e,
-                s: response.into(),
-            })?;
-
-        Ok(config.try_deserialize::<Status>().unwrap())
+        crate::config::deserialize_str(response).map_err(|e| error::Error::ParsingWifiStatus {
+            e,
+            s: response.into(),
+        })
     }
 }
 
@@ -58,25 +52,39 @@ pub struct Config {
     pub ssid: String,
     #[serde(deserialize_with = "deserialize_enabled_bool")]
     pub wps_state: bool,
+    #[serde(deserialize_with = "deserialize_i32")]
     pub wpa: i32,
-    pub ket_mgmt: String,
+    pub key_mgmt: String,
     pub group_cipher: String,
     pub rsn_pairwise_cipher: String,
     pub wpa_pairwise_cipher: String,
 }
 
 impl Config {
+    /// Decode from the response sent from the supplicant
+    /// ```
+    /// # use wifi_ctrl::ap::Config;
+    /// let resp = r#"
+    ///bssid=e0:91:f5:7d:11:c0
+    ///ssid=\xc2\xaf\\_(\xe3\x83\x84)_/\xc2\xaf
+    ///wps_state=enabled
+    ///wpa=12
+    ///group_cipher=CCMP
+    ///key_mgmt=WPA2-PSK
+    ///wpa_state=COMPLETED
+    ///rsn_pairwise_cipher=foo
+    ///wpa_pairwise_cipher=bar
+    ///"#;
+    /// let config = Config::from_response(resp).unwrap();
+    /// assert_eq!(config.wps_state, true);
+    /// assert_eq!(config.wpa, 12);
+    /// assert_eq!(config.ssid, r#"¯\_(ツ)_/¯"#);
+    /// ```
     pub fn from_response(response: &str) -> Result<Config> {
-        use config::{File, FileFormat};
-        let config = config::Config::builder()
-            .add_source(File::from_str(response, FileFormat::Ini))
-            .build()
-            .map_err(|e| error::Error::ParsingWifiConfig {
-                e,
-                s: response.into(),
-            })?;
-
-        Ok(config.try_deserialize::<Config>().unwrap())
+        crate::config::deserialize_str(response).map_err(|e| error::Error::ParsingWifiConfig {
+            e,
+            s: response.into(),
+        })
     }
 }
 
@@ -84,11 +92,23 @@ fn deserialize_enabled_bool<'de, D>(deserializer: D) -> std::result::Result<bool
 where
     D: de::Deserializer<'de>,
 {
-    let s: &str = de::Deserialize::deserialize(deserializer)?;
+    let s: String = de::Deserialize::deserialize(deserializer)?;
 
-    match s {
+    match s.as_str() {
         "enabled" => Ok(true),
         "disabled" => Ok(false),
-        _ => Err(de::Error::unknown_variant(s, &["enabled", "disabled"])),
+        _ => Err(de::Error::unknown_variant(&s, &["enabled", "disabled"])),
+    }
+}
+
+fn deserialize_i32<'de, D>(deserializer: D) -> std::result::Result<i32, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    let s: String = de::Deserialize::deserialize(deserializer)?;
+
+    match s.parse() {
+        Ok(n) => Ok(n),
+        _ => Err(de::Error::custom("invalid int")),
     }
 }

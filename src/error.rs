@@ -1,6 +1,5 @@
 use super::*;
 use broadcast::error::SendError;
-use config::ConfigError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -51,11 +50,11 @@ impl Clone for Error {
             Self::Io(err) => Self::Io(clone_io(err)),
             Self::StartupAborted => Self::StartupAborted,
             Self::ParsingWifiStatus { e, s } => Self::ParsingWifiStatus {
-                e: clone_config_err(e),
+                e: e.clone(),
                 s: s.clone(),
             },
             Self::ParsingWifiConfig { e, s } => Self::ParsingWifiConfig {
-                e: clone_config_err(e),
+                e: e.clone(),
                 s: s.clone(),
             },
             Self::UnexpectedWifiApRepsonse(s) => Self::UnexpectedWifiApRepsonse(s.clone()),
@@ -88,15 +87,5 @@ fn clone_io(err: &std::io::Error) -> std::io::Error {
         std::io::Error::from_raw_os_error(raw)
     } else {
         std::io::Error::new(err.kind(), err.to_string())
-    }
-}
-
-fn clone_config_err(err: &config::ConfigError) -> config::ConfigError {
-    match err {
-        ConfigError::Frozen => ConfigError::Frozen,
-        ConfigError::NotFound(path) => ConfigError::NotFound(path.clone()),
-        ConfigError::PathParse(err) => ConfigError::PathParse(err.clone()),
-        ConfigError::Message(message) => ConfigError::Message(message.clone()),
-        e => ConfigError::Message(e.to_string()),
     }
 }
