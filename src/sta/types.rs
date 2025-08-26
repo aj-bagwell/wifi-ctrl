@@ -127,6 +127,7 @@ pub enum KeyMgmt {
     None,
     WpaPsk,
     WpaEap,
+    Sae,
     IEEE8021X,
 }
 
@@ -136,6 +137,7 @@ impl Display for KeyMgmt {
             KeyMgmt::None => "NONE".to_string(),
             KeyMgmt::WpaPsk => "WPA-PSK".to_string(),
             KeyMgmt::WpaEap => "WPA-EAP".to_string(),
+            KeyMgmt::Sae => "SAE".to_string(),
             KeyMgmt::IEEE8021X => "IEEE8021X".to_string(),
         };
         write!(f, "{}", str)
