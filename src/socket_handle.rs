@@ -90,8 +90,22 @@ impl<const N: usize> SocketHandle<N> {
         Ok(&self.buffer[..n])
     }
 
+    async fn send(&mut self, cmd: &str) -> SocketResult<usize> {
+        loop {
+            match self.socket.try_recv(self.buffer.as_mut_slice()) {
+                Ok(n) => error!(
+                    "got unsolicited response {}",
+                    String::from_utf8_lossy(&self.buffer[..n])
+                ),
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(self.socket.send(cmd.as_bytes()).await?)
+    }
+
     pub async fn command(&mut self, cmd: &str) -> SocketResult<Result> {
-        let n = self.socket.send(cmd.as_bytes()).await?;
+        let n = self.send(cmd).await?;
         if n != cmd.len() {
             return Ok(Err(error::ClientError::DidNotWriteAllBytes(n, cmd.len())));
         }
@@ -107,7 +121,7 @@ impl<const N: usize> SocketHandle<N> {
         ParseError: From<E>,
         F: FnOnce(&'a str) -> std::result::Result<T, E>,
     {
-        let n = self.socket.send(req.as_bytes()).await?;
+        let n = self.send(req).await?;
         if n != req.len() {
             return Ok(Err(error::ClientError::DidNotWriteAllBytes(n, req.len())));
         }
@@ -149,7 +163,7 @@ impl<const N: usize> SocketHandle<N> {
     }
 
     async fn expect_ok_with_default_timeout(&mut self) -> SocketResult<Result> {
-        self.expect_ok_with_timeout(tokio::time::Duration::from_secs(1))
+        self.expect_ok_with_timeout(tokio::time::Duration::from_secs(5))
             .await
     }
 
@@ -160,7 +174,10 @@ impl<const N: usize> SocketHandle<N> {
         tokio::select!(
             resp = self.expect_ok() => resp,
             _ =
-                tokio::time::sleep(timeout) => Ok(Err(error::ClientError::Timeout))
+                tokio::time::sleep(timeout) => {
+                    error!("timed out waiting for WPA response");
+                    Ok(Err(error::ClientError::Timeout))
+                }
         )
     }
 }
