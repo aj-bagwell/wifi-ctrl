@@ -50,8 +50,14 @@ impl ScanResult {
     ///assert_eq!(results[1].name, r#"¯\_(ツ)_/¯"#);
     ///```
     pub fn vec_from_str(response: &str) -> ParseResult<Arc<Vec<ScanResult>>> {
+        let mut lines = response.lines();
         let mut results = Vec::new();
-        for line in response.lines().skip(1) {
+        let header = lines.next();
+        if header != Some("bssid / frequency / signal level / flags / ssid") {
+            return Err(ParseError::ScanResult);
+        }
+
+        for line in lines {
             results.push(ScanResult::from_line(line).ok_or(ParseError::ScanResult)?);
         }
         results.sort_by(|a, b| a.signal.cmp(&b.signal));
@@ -141,5 +147,27 @@ impl Display for KeyMgmt {
             KeyMgmt::IEEE8021X => "IEEE8021X".to_string(),
         };
         write!(f, "{}", str)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_scan_result() {
+        let resp = "bssid / frequency / signal level / flags / ssid\ne0:91:f5:7d:11:c0\t2462\t-34\t[WPA2-PSK-CCMP][WPS][ESS]\tHiveWiFi\n80:3f:5d:c0:fa:15\t2412\t-41\t[WPA2-SAE-CCMP][SAE-H2E][ESS][UTF-8]\tOpenWrt\n86:25:19:57:ec:98\t2417\t-49\t[WPA2-PSK-CCMP][WPS][ESS][P2P]\tDIRECT-XlC43x Series\n00:5f:67:90:da:64\t2417\t-55\t[WPA-PSK-CCMP][WPA2-PSK-CCMP][ESS]\tTP-Link_DA64\n1c:61:b4:31:84:52\t2422\t-71\t[WPA-PSK-CCMP][WPA2-PSK-CCMP][ESS]\tTP-Link_DA64\n34:5d:9e:ae:67:a4\t2437\t-83\t[WPA2-PSK-CCMP][WPS][ESS]\tvodafone4AF044\nac:f8:cc:d7:56:8d\t2412\t-82\t[WPA2-PSK-CCMP][WPS][ESS]\tVM1582148\n0a:4d:43:7b:c9:28\t2462\t-84\t[WPA2-PSK-CCMP][ESS]\tVM1582148\n0e:f8:cc:d7:56:8d\t2412\t-83\t[WPA2-PSK-CCMP][ESS]\t\n";
+        let scan_results = ScanResult::vec_from_str(resp.trim_end_matches('\n')).unwrap();
+        assert_eq!(scan_results.len(), 9);
+    }
+
+    #[test]
+    fn test_dont_parse_bad_scan_result() {
+        let resp = "bssid / frequency / signal level / flags / ssid\ne0:91:f5:7d:11:c0\t2462\t-34\t[WPA2-PSK-CCMP][WPS][ESS]\tHiveWiFi\n80:3f:5d:c0:fa:15\t2412\t-41\t[WPA2-SAE-CCMP][SAE-H2E][ESS][UTF-8]\tOpenWrt\n86:25:19:57:ec:98\t2417\t-49\t[WPA2-PSK-CCMP][WPS][ESS][P2P]\tDIRECT-XlC43x Series\n00:5f:67:90:da:64\t2417\t-55\t[WPA-PSK-CCMP][WPA2-PSK-CCMP][ESS]\tTP-Link_DA64\n1c:61:b4:31:84:52\t2422\t-71\t[WPA-PSK-CCMP][WPA2-PSK-CCMP][ESS]\tTP-Link_DA64\n34:5d:9e:ae:67:a4\t2437\t-83\t[WPA2-PSK-CCMP][WPS][ESS]\tvodafone4AF044\nac:f8:cc:d7:56:8d\t2412\t-82\t[WPA2-PSK-CCMP][WPS][ESS]\tVM1582148\n0a:4d:43:7b:c9:28\t2462\t-84\t[WPA2-PSK-CCMP][ESS]\tVM1582148\n0e:f8:cc:d7:56:8d\t2412\t-83\t[WPA2-PSK-CCMP]";
+        let scan_results = ScanResult::vec_from_str(resp.trim_end_matches('\n'));
+        assert!(matches!(scan_results, Err(ParseError::ScanResult)));
+        let resp = "Ok";
+        let scan_results = ScanResult::vec_from_str(resp.trim_end_matches('\n'));
+        assert!(matches!(scan_results, Err(ParseError::ScanResult)));
     }
 }
