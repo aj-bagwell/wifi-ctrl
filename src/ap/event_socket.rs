@@ -28,16 +28,16 @@ impl EventSocket {
             command.push(' ');
             command.push_str(o);
         }
-        let mut attach = socket_handle.command(command.as_bytes()).await?;
+        let mut attach = socket_handle.command(&command).await?;
         while attach.is_err() {
             tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-            attach = socket_handle.command(command.as_bytes()).await?;
+            attach = socket_handle.command(&command).await?;
         }
 
-        let mut log_level = socket_handle.command(b"LOG_LEVEL DEBUG").await?;
+        let mut log_level = socket_handle.command("LOG_LEVEL DEBUG").await?;
         while log_level.is_err() {
             tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-            log_level = socket_handle.command(b"LOG_LEVEL DEBUG").await?;
+            log_level = socket_handle.command("LOG_LEVEL DEBUG").await?;
         }
         info!("hostapd event stream registered");
         Ok((deferred_requests, Self { socket_handle }))

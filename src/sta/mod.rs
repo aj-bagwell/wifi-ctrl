@@ -176,7 +176,7 @@ impl WifiStation {
                 }
             }
             Request::Scan(response_channel) => {
-                match socket_handle.command(b"SCAN").await? {
+                match socket_handle.command("SCAN").await? {
                     Ok(_) => {
                         scan_requests.push(response_channel);
                     }
@@ -219,16 +219,15 @@ impl WifiStation {
                     }
                 );
                 debug!("wpa_ctrl {cmd:?}");
-                let bytes = cmd.into_bytes();
-                let _ = response.send(socket_handle.command(&bytes).await?);
+                let _ = response.send(socket_handle.command(&cmd).await?);
             }
             Request::SaveConfig(response) => {
                 debug!("wpa_ctrl config saved");
-                let _ = response.send(socket_handle.command(b"SAVE_CONFIG").await?);
+                let _ = response.send(socket_handle.command("SAVE_CONFIG").await?);
             }
             Request::ReloadConfig(response) => {
                 debug!("wpa_ctrl config reloaded");
-                let _ = response.send(socket_handle.command(b"RECONFIGURE").await?);
+                let _ = response.send(socket_handle.command("RECONFIGURE").await?);
             }
             Request::RemoveNetwork(remove_network, response) => {
                 let str = match remove_network {
@@ -236,16 +235,14 @@ impl WifiStation {
                     RemoveNetwork::Id(id) => id.to_string(),
                 };
                 let cmd = format!("REMOVE_NETWORK {str}");
-                let bytes = cmd.into_bytes();
                 debug!("wpa_ctrl removed network {str}");
-                let _ = response.send(socket_handle.command(&bytes).await?);
+                let _ = response.send(socket_handle.command(&cmd).await?);
             }
             Request::SelectNetwork(id, response_sender) => {
                 match select_request {
                     None => {
                         let cmd = format!("SELECT_NETWORK {id}");
-                        let bytes = cmd.into_bytes();
-                        if let Err(e) = socket_handle.command(&bytes).await? {
+                        if let Err(e) = socket_handle.command(&cmd).await? {
                             warn!("Error while selecting network {id}: {e}");
                             let _ = response_sender.send(Err(e));
                         } else {

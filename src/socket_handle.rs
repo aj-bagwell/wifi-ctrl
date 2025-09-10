@@ -83,8 +83,8 @@ impl<const N: usize> SocketHandle<N> {
         Ok(&self.buffer[..n])
     }
 
-    pub async fn command(&mut self, cmd: &[u8]) -> SocketResult<Result> {
-        let n = self.socket.send(cmd).await?;
+    pub async fn command(&mut self, cmd: &str) -> SocketResult<Result> {
+        let n = self.socket.send(cmd.as_bytes()).await?;
         if n != cmd.len() {
             return Ok(Err(error::ClientError::DidNotWriteAllBytes(n, cmd.len())));
         }

@@ -126,15 +126,14 @@ impl WifiAp {
                 let _ = response_channel.send(config);
             }
             Request::Enable(response_channel) => {
-                let _ = response_channel.send(socket_handle.command(b"ENABLE").await?);
+                let _ = response_channel.send(socket_handle.command("ENABLE").await?);
             }
             Request::Disable(response_channel) => {
-                let _ = response_channel.send(socket_handle.command(b"DISABLE").await?);
+                let _ = response_channel.send(socket_handle.command("DISABLE").await?);
             }
             Request::SetValue(key, value, response_channel) => {
                 let request_string = format!("SET {key} {value}");
-                let _ =
-                    response_channel.send(socket_handle.command(request_string.as_bytes()).await?);
+                let _ = response_channel.send(socket_handle.command(&request_string).await?);
             }
             Request::Shutdown => (), //shutdown is handled at the scope above
         }
