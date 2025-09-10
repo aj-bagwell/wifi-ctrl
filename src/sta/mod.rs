@@ -213,7 +213,7 @@ impl WifiStation {
                     "SET_NETWORK {id} {}",
                     match param {
                         SetNetwork::Ssid(ssid) => format!("ssid {}", conf_escape(&ssid)),
-                        SetNetwork::Bssid(bssid) => format!("bssid {}", conf_escape(&bssid)),
+                        SetNetwork::Bssid(bssid) => format!("bssid {}", &bssid),
                         SetNetwork::Psk(psk) => format!("psk {}", conf_escape(&psk)),
                         SetNetwork::KeyMgmt(mgmt) => format!("key_mgmt {}", mgmt),
                     }
