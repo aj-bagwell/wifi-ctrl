@@ -80,6 +80,13 @@ impl<const N: usize> SocketHandle<N> {
 
     pub async fn recv(&mut self) -> SocketResult<&[u8]> {
         let n = self.socket.recv(&mut self.buffer).await?;
+        if n == self.buffer.len() {
+            error!("message too big for buffer {}b", self.buffer.len());
+            return Err(error::SocketError::Io(std::io::Error::new(
+                std::io::ErrorKind::OutOfMemory,
+                "message too big for buffer",
+            )));
+        }
         Ok(&self.buffer[..n])
     }
 
